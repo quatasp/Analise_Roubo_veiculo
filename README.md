@@ -4,7 +4,7 @@ Análise Geo Espacial e Análise do Comportamento dos Roubos de Veículos no Est
 
 Resumo
 
-Este estudo tem como finalidade coletar os dados de roubos de veículos no estado de São Paulo entre o período de janeiro/17 a julho/19, com o objetivo principal de verificar se existe correlação espacial entre a quantidade de ocorrências de roubos de veículos com as demais variáveis demográficas, tais como taxa de urbanização, número de habitantes e Índice de Desenvolvimento Urbano. O método utilizado no presente estudo foi inicialmente a análise exploratória de dados, seguida da aplicação de regressões linear e espacial, com a utilização de ferramentas como os softwares R Studio e o GEODA.
+Este estudo tem como finalidade coletar os dados de roubos de veículos no estado de São Paulo entre o período de janeiro/17 a julho/19, com o objetivo principal de verificar para uma empresa de seguradora se existe correlação espacial entre a quantidade de ocorrências de roubos de veículos com as demais variáveis demográficas, tais como taxa de urbanização, número de habitantes e Índice de Desenvolvimento Urbano para melhorar o modelo preditivo existente na empresa. O método utilizado no presente estudo foi inicialmente a análise exploratória de dados, seguida da aplicação de regressões linear e espacial, com a utilização de ferramentas como os softwares R Studio e o GEODA.
 
 Metodologia
 
