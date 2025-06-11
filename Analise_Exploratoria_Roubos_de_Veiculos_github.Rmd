@@ -1,0 +1,922 @@
+---
+title: "Análise Exploratória - Roubo de Veículos"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Objetivo do estudo:
+
+Os crimes de roubo se constituem em um dos principais catalisadores do sentimento generalizado de insegurança pública.
+
+São inúmeros os estudos e pesquisas produzidos nos últimos anos, voltados à busca pela compreensão dos fenômenos desses delitos. Estudos que nos mostram, por exemplo, que o Estado de São Paulo lidera o ranking Brasil de frota de veículos com aproximadamente 30 milhões de unidades  (IBGE, 2018). E para investigar de maneira mais profunda a origem deste e dos demais dados, desenvolvemos este estudo.
+
+Para este estudo, a ferramenta R subsidiará as análises através de tabelas, gráficos e mapas proporcionando uma experiência mais eficaz em comparação a outros programas.
+
+Os elementos deste estudo giram em torno da análise com base em roubos de veículos ocorridos no Estado de São Paulo, bem como, a identificação dos locais de maiores incidências, ou seja, número de boletins por delegacias, dia da semana de maior ocorrência, mês, ano e o panorama da evolução ou involução do número de roubos no Estado.
+
+# Questões de Negócio:
+
+Para fundamentar nosso estudo, foram levantadas as seguintes questões de negócios:
+
+•	Quais são as marcas mais visadas pelos meliantes?
+•	Quais os tipos de veículos mais roubados?
+•	Quais os dias da semana e os períodos mais visados?
+•	Quais as localidades de ocorrência com maior incidência de roubos?
+•	Qual o percentual de boletins registrados fora de área de circunscrição?
+•	Qual a distância entre o local da ocorrência e a delegacia mais próxima (bairro com maior incidência)?
+•	Qual a quantidade de roubos por tipo de veículo?
+•	Qual a quantidade de roubos por Munícipio?
+•	Qual a distribuição geográfica por Municípios e tipo de veículos roubados?
+•	Qual a previsão do número de roubos de veículos para os próximos anos?
+
+### Limpando o Console e o Global Environment:
+```{r, warning=FALSE, message=FALSE}
+cat("\014") 
+rm(list = ls())
+```
+### Instalando as bibliotecas:
+```{r, warning=FALSE, message=FALSE}
+#install.packages("readxl")
+#install.packages("abjutils")
+#install.packages("digest")
+#install.packages("brazilmaps")
+#install.packages('maptools')
+#install.packages('spgwr')
+#install.packages('spdep')
+#install.packages("car")
+```
+
+### Chamando as bibliotecas:
+```{r, warning=FALSE, message=FALSE}
+library(spdep)
+library(spgwr)
+library(maptools)
+library(readxl)
+library(stringr)
+library(abjutils)
+library(dplyr) 
+library(ggplot2)
+library(digest)
+library(plotrix)
+library(tidyverse) 
+library(kableExtra) 
+library(sf)
+library(car)
+```
+### Importando o dataSet com os dados de Seguranca Publica de roubo de veiculos no estado de SP
+
+Base de dados extraída do portal de transparência da Secretária de Segurança Pública do Governo de SP utilizará a linguagem Python para analisar e entender um pouco sobre comportamento e locais dos roubos de veículos no estado de São Paulo.
+
+```{r, warning=FALSE, message=FALSE}
+getwd()
+```
+
+```{r, warning=FALSE, message=FALSE}
+df <- as.data.frame(read_excel("C:/Users/iosbi/OneDrive/Documentos/R/Trabalho de análise exploratória e estatística espacial/DB_roubo_veiculo_final.xlsx", na = "")) 
+```
+###Caracterizacao do Dataset:
+
+```{r, warning=FALSE, message=FALSE}
+lst <- unclass(df)
+summary(lst)
+```
+
+### Realiza a tratativa de algumas variáveis do tipo string, converte variáveis de string para float e para as variáveis quantitativas substitui o null por 0:
+```{r, warning=FALSE, message=FALSE}
+ajustar=function(x){
+ x%>%
+  #stringr::str_trim() %>%                        #Remove espaços em branco sobrando
+  #stringr::str_to_lower() %>%                    #Converte todas as strings para minusculo
+  #rm_accent() %>%                                #Remove os acentos com a funcao criada acima
+  #stringr::str_replace_all("[/' '.()]", " ") %>% #Substitui os caracteres especiais por " "
+  stringr::str_replace_all(",", ".") %>%
+  stringr::str_to_upper()                         #Converte todas as strings para minusculo
+  #stringr::str_replace_all("_+", " ") %>%        #Substitui os caracteres especiais por " "   
+  #stringr::str_replace("_$", " ")                #Substitui o caracter especiais por " "
+}
+#df$DESCRICAOLOCAL <- ajustar(df$DESCRICAOLOCAL)
+#df$QTD_BO[is.na(df$QTD_BO)] <- 0
+#df$QTD_VEICULOS[is.na(df$QTD_VEICULOS)] <- 0
+#df$QTD_RouboVeiculo[is.na(df$QTD_RouboVeiculo)] <- 0
+
+df$LATITUDE <- ajustar(df$LATITUDE)
+df$LONGITUDE <- ajustar(df$LONGITUDE)
+df$lat_delagacia1 <- ajustar(df$lat_delagacia1)
+df$lon_delagacia1 <- ajustar(df$lon_delagacia1)
+df$lat_delagacia2 <- ajustar(df$lat_delagacia2)
+df$lon_delagacia2 <- ajustar(df$lon_delagacia2)
+df$DESCRICAOLOCAL <- ajustar(df$DESCRICAOLOCAL)
+
+df$LATITUDE <- as.numeric(df$LATITUDE)
+df$LONGITUDE <- as.numeric(df$LONGITUDE)
+df$lat_delagacia1 <- as.numeric(df$lat_delagacia1)
+df$lon_delagacia1 <- as.numeric(df$lon_delagacia1)
+df$lat_delagacia2 <- as.numeric(df$lat_delagacia2)
+df$lon_delagacia2 <- as.numeric(df$lon_delagacia2)
+
+```
+
+### Resumo dos dados:
+```{r, warning=FALSE, message=FALSE}
+summary(df)
+```
+
+## Qual a distribuição geográfica por Municípios e tipo de veículos roubados?
+
+### Mapa Temático:
+```{r, warning=FALSE, message=FALSE}
+
+#Bibliotecas:
+library(tidyverse)
+library(brazilmaps)
+
+#Filtra numa variável "mapa" o mapa do estado de SP
+mapa <- get_brmap("City", geo.filter = list(State = 35))
+
+#Soma os roubos por município
+Qtd_Roubo_Veiculo <- df %>% 
+  group_by(COD_Municipio) %>% 
+  summarise(Qtd_Roubo_Veiculo = sum(QTD_VEICULOS))
+
+
+#JUNTANDO AS BASES "mapa" e "Qtd_Roubo_Veiculo"
+uf_map2 <- get_brmap("City", geo.filter = list(State = 35)) %>% 
+  inner_join(Qtd_Roubo_Veiculo,  c("City" = "COD_Municipio"))
+
+#Gráfico: Qtd de veículos roubados por município:
+p <- uf_map2 %>%
+      ggplot() +
+      geom_sf(aes(fill = Qtd_Roubo_Veiculo),colour = "grey", size = 0.2)+
+      scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+      theme_minimal()+
+      xlab("lon")+
+      ylab("lat")+
+      theme(legend.position = "right",
+            legend.title = element_blank(),
+            axis.text.x = element_text(angle = 90),
+            axis.title.y = 
+              element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p
+```
+
+### Mapa com a distribuição das ocorrências:
+```{r}
+#pontos de latitude de roubos
+ssp_points <- df%>%select(LONGITUDE, LATITUDE, DESCR_TIPO_VEICULO, QTD_VEICULOS)
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf <- st_as_sf(ssp_points, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+p1 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points, aes(LONGITUDE, LATITUDE))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")
+  
+p1
+```
+
+###	Quais são as marcas mais visadas pelos meliantes?
+```{r, warning=TRUE, message=FALSE}
+# Primeiro eu agrupo os roubos por marca em um novo dataset
+dfs <- group_by(df,DESCR_MARCA)%>%summarise(Total=sum(QTD_VEICULOS))
+
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs$Total, decreasing = FALSE)
+levels <- dfs$DESCR_MARCA[idx]
+dfs$DESCR_MARCA <- factor(dfs$DESCR_MARCA, levels = levels, ordered=TRUE)
+
+dfs %>%
+  top_n(30, Total) %>%  #Seleciona o top 30 das marcas
+  ggplot(aes(x = DESCR_MARCA, y = Total)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total))+
+  xlab("Marcas")+
+  ylab("Qtd roubo de veículos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+###	Quais são as marcas mais visadas pelos meliantes? (Versão Mapa) 
+```{r}
+#pontos de latitude de roubos
+ssp_points2 <- df%>%select(LONGITUDE, LATITUDE, DESCR_MARCA, QTD_VEICULOS)%>%filter(DESCR_MARCA== "HONDA"|DESCR_MARCA=="GM CHEVROLET"|DESCR_MARCA=="FIAT"|DESCR_MARCA=="VOLKSWAGEN"|DESCR_MARCA=="FORD"|DESCR_MARCA=="RENAULT"|DESCR_MARCA=="HYUNDAI"|DESCR_MARCA=="YAMAHA")
+
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf2 <- st_as_sf(ssp_points2, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p2 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points2, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_MARCA)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p2
+
+```
+
+## Quais são os carros mais visados?
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por carro em um novo dataset
+dfs2 <- group_by(df, DESCR_VEICULO_AGRUPADA)%>%filter(DESCR_TIPO_VEICULO =="AUTOMOVEL")%>% summarise(Total=sum(QTD_VEICULOS))
+
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs2$Total, decreasing = FALSE)
+levels <- dfs2$DESCR_VEICULO_AGRUPADA[idx]
+dfs2$DESCR_VEICULO_AGRUPADA <- factor(dfs2$DESCR_VEICULO_AGRUPADA, levels = levels, ordered=TRUE)
+
+dfs2 %>%
+  top_n(30, Total) %>%  #Seleciona o top 25 das marcas
+  ggplot(aes(x = DESCR_VEICULO_AGRUPADA, y = Total)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total))+
+  xlab("Automoveis")+
+  ylab("Qtd de roubo veículos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+### Quais são os carros mais visados? (Versão Mapa)
+```{r}
+#pontos de latitude de roubos
+ssp_points3 <- df%>%select(LONGITUDE, LATITUDE, DESCR_VEICULO_AGRUPADA, QTD_VEICULOS)%>%filter(DESCR_VEICULO_AGRUPADA== "HB20"|DESCR_VEICULO_AGRUPADA=="PALIO"|DESCR_VEICULO_AGRUPADA=="ONIX"|DESCR_VEICULO_AGRUPADA=="FOX"|DESCR_VEICULO_AGRUPADA=="FIESTA"|DESCR_VEICULO_AGRUPADA=="GOL"|DESCR_VEICULO_AGRUPADA=="SANDERO")
+
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf3 <- st_as_sf(ssp_points3, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p3 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points3, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_VEICULO_AGRUPADA)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p3
+
+```
+
+## Quais são as motocicletas mais visadas? (Como a CG representa 40% dos roubos de moto, não faz sentido plotar um grafico de mapa para essa categoria)
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por moto em um novo dataset
+dfs3 <- group_by(df, DESCR_VEICULO_AGRUPADA)%>%filter(DESCR_TIPO_VEICULO=="MOTOCICLETA")%>% summarise(Total=sum(QTD_VEICULOS))
+  
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs3$Total, decreasing = FALSE)
+levels <- dfs3$DESCR_VEICULO_AGRUPADA[idx]
+dfs3$DESCR_VEICULO_AGRUPADA <- factor(dfs3$DESCR_VEICULO_AGRUPADA, levels = levels, ordered=TRUE)
+
+dfs3 %>%
+  top_n(30, Total) %>%  #Seleciona o top 30 das marcas
+  ggplot(aes(x = DESCR_VEICULO_AGRUPADA, y = Total)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total))+
+  xlab("Motocicletas")+
+  ylab("Qtd roubo de motos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+## Quais são os utilitários mais visados?
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por moto em um novo dataset
+dfs11 <- group_by(df, DESCR_VEICULO_AGRUPADA)%>%filter(DESCR_TIPO_VEICULO=="UTILITÁRIO")%>% summarise(Total=sum(QTD_VEICULOS))
+  
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs11$Total, decreasing = FALSE)
+levels <- dfs11$DESCR_VEICULO_AGRUPADA[idx]
+dfs11$DESCR_VEICULO_AGRUPADA <- factor(dfs11$DESCR_VEICULO_AGRUPADA, levels = levels, ordered=TRUE)
+
+dfs11 %>%
+  top_n(30, Total) %>%  #Seleciona o top 30 das marcas
+  ggplot(aes(x = DESCR_VEICULO_AGRUPADA, y = Total)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total))+
+  xlab("Utilitários")+
+  ylab("Qtd roubo de motos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+### Quais são os utilitários mais visados? (Versão Mapa)
+```{r}
+#pontos de latitude de roubos
+ssp_points4 <- df%>%select(LONGITUDE, LATITUDE, DESCR_VEICULO_AGRUPADA, QTD_VEICULOS)%>%filter(DESCR_VEICULO_AGRUPADA== "STRADA"|DESCR_VEICULO_AGRUPADA=="PALIO"|DESCR_VEICULO_AGRUPADA=="FIORINO"|DESCR_VEICULO_AGRUPADA=="ECOSPORT"|DESCR_VEICULO_AGRUPADA=="SPIN"|DESCR_VEICULO_AGRUPADA=="MASTER"|DESCR_VEICULO_AGRUPADA=="HILUX")
+
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf4 <- st_as_sf(ssp_points4, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p4 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points4, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_VEICULO_AGRUPADA)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p4
+
+```
+
+### Quais os tipos de veículos mais roubados?
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por Tipo veículo em um novo dataset
+dfs4 <- group_by(df,DESCR_TIPO_VEICULO)%>%summarise(Total=sum(QTD_VEICULOS))
+
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs4$Total, decreasing = FALSE)
+levels <- dfs4$DESCR_TIPO_VEICULO[idx]
+dfs4$DESCR_TIPO_VEICULO <- factor(dfs4$DESCR_TIPO_VEICULO, levels = levels, ordered=TRUE)
+
+dfs4 %>%
+  #top_n(30, Total) %>%  #Seleciona o top 100
+  ggplot(aes(x = DESCR_TIPO_VEICULO, y = Total)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total))+
+  xlab("Categoria do veículo")+
+  ylab("Qtd roubo de veículos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+### Quais são os tipos de veículos mais visados? (Versão Mapa)
+```{r}
+#pontos de latitude de roubos
+ssp_points5 <- df%>%select(LONGITUDE, LATITUDE, DESCR_TIPO_VEICULO, QTD_VEICULOS)%>%filter(DESCR_TIPO_VEICULO== "AUTOMOVEL"|DESCR_TIPO_VEICULO=="MOTOCICLETA"|DESCR_TIPO_VEICULO=="UTILITÁRIO"|DESCR_TIPO_VEICULO=="CAMINHÃO"|DESCR_TIPO_VEICULO=="ONIBUS"|DESCR_TIPO_VEICULO=="TRATOR")
+
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf5 <- st_as_sf(ssp_points5, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p5 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points5, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_TIPO_VEICULO)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p5
+
+```
+
+### Quais são os dias da semana mais visados?
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por Dia da semana em um novo dataset
+dfs5 <- group_by(df,DIA_DA_SEMANA)%>%summarise(Total=sum(QTD_VEICULOS))
+
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs5$Total, decreasing = FALSE)
+levels <- dfs5$DIA_DA_SEMANA[idx]
+dfs5$DIA_DA_SEMANA <- factor(dfs5$DIA_DA_SEMANA, levels = levels, ordered=TRUE)
+
+dfs5 %>%
+  #top_n(30, Total) %>%  #Seleciona o top 100
+  ggplot(aes(x = DIA_DA_SEMANA, y = Total)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total))+
+  xlab("Dia da semana")+
+  ylab("Qtd roubo de veículos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+### Quais são os dias da semana mais visados? (Versão Mapa)
+```{r}
+#pontos de latitude de roubos
+ssp_points6 <- df%>%select(LONGITUDE, LATITUDE, DIA_DA_SEMANA, QTD_VEICULOS)
+
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf6 <- st_as_sf(ssp_points6, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p6 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points6, aes(LONGITUDE, LATITUDE, colour = factor(DIA_DA_SEMANA)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p6
+```
+
+### Quais são os períodos mais visados?
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por Período em um novo dataset
+dfs6 <- group_by(df,PERIDOOCORRENCIA)%>%summarise(Total=sum(QTD_VEICULOS))
+
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs6$Total, decreasing = FALSE)
+levels <- dfs6$PERIDOOCORRENCIA[idx]
+dfs6$PERIDOOCORRENCIA <- factor(dfs6$PERIDOOCORRENCIA, levels = levels, ordered=TRUE)
+
+dfs6 %>%
+  #top_n(30, Total) %>%  #Seleciona o top 100
+  ggplot(aes(x = PERIDOOCORRENCIA, y = Total)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total))+
+  xlab("Período")+
+  ylab("Qtd roubo de veículos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+### Quais são os períodos mais visados? (Versão Mapa)
+```{r}
+#pontos de latitude de roubos
+ssp_points7 <- df%>%select(LONGITUDE, LATITUDE, PERIDOOCORRENCIA, QTD_VEICULOS)
+
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf7 <- st_as_sf(ssp_points7, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p7 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points7, aes(LONGITUDE, LATITUDE, colour = factor(PERIDOOCORRENCIA)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p7
+```
+
+### Quais os dias da semana e os períodos mais visados? (Não é necessário plotar mapa deste gráfico, e o professor gostou deste modelo)
+```{r}
+df %>%
+  ggplot(aes(x = reorder(DIA_DA_SEMANA, +QTD_VEICULOS), y = QTD_VEICULOS)) +
+  geom_col()+
+  xlab("Dias da semana")+
+  ylab("Qtd de veículos")+
+  geom_col(aes(fill = PERIDOOCORRENCIA))+
+  coord_flip(expand = TRUE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+
+```
+
+
+### Quais as localidades de ocorrência com maior incidência de roubos?
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por Local da ocorrência em um novo dataset
+dfs7 <- group_by(df,DESCRICAOLOCAL)%>%summarise(Total=sum(QTD_VEICULOS))
+
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs7$Total, decreasing = FALSE)
+levels <- dfs7$DESCRICAOLOCAL[idx]
+dfs7$DESCRICAOLOCAL <- factor(dfs7$DESCRICAOLOCAL, levels = levels, ordered=TRUE)
+
+dfs7 %>%
+  top_n(5, Total) %>%  #Seleciona o top 5
+  ggplot(aes(x = DESCRICAOLOCAL, y = Total/10)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total/10))+
+  xlab("Local da ocorrência")+
+  ylab("Qtd roubo de veículos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+### Qual o percentual de boletins registrados fora de área de circunscrição?
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por Local da ocorrência em um novo dataset
+dfs8 <- group_by(df,AREA_CIRCUNSCRICAO)%>%summarise(Total=sum(QTD_VEICULOS))
+
+# Carrego os valores
+x <-  dfs8$Total
+y <- round(100*x/sum(x), 1)
+
+# Plotando o gráfico
+pie(x, labels = y, main = "% De registros de ocorrências em área de circunscrição",col = rainbow(length(x)))
+legend("right", c("Não","Sim"), cex = 0.8, fill = rainbow(length(x)))
+
+# Plot 3D
+pie3D(x,labels = y,explode = 0.3, main = "% De registros de ocorrências em área de circunscrição")
+legend("right", c("Não","Sim"), cex = 0.8, fill = rainbow(length(x)))
+```
+
+
+### Qual a quantidade de roubos por Munícipio? (Como a São Paulo representa 45% dos roubos de veículos, não faz sentido plotar um grafico de mapa para essa categoria)
+```{r, warning=FALSE, message=FALSE}
+# Primeiro eu agrupo os roubos por Cidades do Estado de SP em um novo dataset
+dfs9 <- group_by(df,CIDADE)%>%summarise(Total=sum(QTD_VEICULOS))
+
+# Reordeno os dados em ordem decrescente:
+idx <- order(dfs9$Total, decreasing = FALSE)
+levels <- dfs9$CIDADE[idx]
+dfs9$CIDADE <- factor(dfs9$CIDADE, levels = levels, ordered=TRUE)
+
+dfs9 %>%
+  top_n(10, Total) %>%  #Seleciona o top 10
+  ggplot(aes(x = CIDADE, y = Total)) +
+  scale_fill_viridis_c(option = 1, begin = 1, end = 0.1)+
+  geom_col(aes(fill = Total))+
+  xlab("Cidades do Estado de SP")+
+  ylab("Qtd roubo de veículos")+
+  coord_flip(expand = FALSE)+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+```
+
+
+### Mapa por tipo de veículo: 
+```{r}
+#pontos de latitude de roubos
+ssp_points19 <- df%>%select(LONGITUDE, LATITUDE, DESCR_TIPO_VEICULO, QTD_VEICULOS)
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf1 <- st_as_sf(ssp_points19, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p30 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points19, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_TIPO_VEICULO)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p30
+
+#Salva o mapa em alta resolução:
+#ggsave("roubo_Tipo_Veiculo.png", plot = p3, dpi = 320, width = 80, height = 70, units = "cm")
+
+```
+
+
+### Mapa por tipo de veículo: Automóvel
+```{r}
+#pontos de latitude de roubos
+ssp_points1 <- df%>% filter(DESCR_TIPO_VEICULO=="AUTOMOVEL")%>%select(LONGITUDE, LATITUDE, DESCR_TIPO_VEICULO, QTD_VEICULOS)
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf1 <- st_as_sf(ssp_points1, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p3 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points1, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_TIPO_VEICULO)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+p3
+
+#Salva o mapa em alta resolução:
+#ggsave("roubo_Tipo_Veiculo.png", plot = p3, dpi = 320, width = 80, height = 70, units = "cm")
+
+```
+
+### Mapa por tipo de veículo: Motos
+```{r}
+#pontos de latitude de roubos
+ssp_points1 <- df%>% filter(DESCR_TIPO_VEICULO=="MOTOCICLETA")%>%select(LONGITUDE, LATITUDE, DESCR_TIPO_VEICULO, QTD_VEICULOS)
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf1 <- st_as_sf(ssp_points1, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p15 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points1, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_TIPO_VEICULO)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+p15
+
+#Salva o mapa em alta resolução:
+#ggsave("roubo_Tipo_Veiculo.png", plot = p3, dpi = 320, width = 80, height = 70, units = "cm")
+
+```
+
+### Mapa por tipo de veículo: Utilitário
+```{r}
+#pontos de latitude de roubos
+ssp_points1 <- df%>% filter(DESCR_TIPO_VEICULO=="UTILITÁRIO")%>%select(LONGITUDE, LATITUDE, DESCR_TIPO_VEICULO, QTD_VEICULOS)
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf1 <- st_as_sf(ssp_points1, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p16 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points1, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_TIPO_VEICULO)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+p16
+
+#Salva o mapa em alta resolução:
+#ggsave("roubo_Tipo_Veiculo.png", plot = p3, dpi = 320, width = 80, height = 70, units = "cm")
+
+```
+
+### Mapa por tipo de veículo: Caminhão
+```{r}
+#pontos de latitude de roubos
+ssp_points1 <- df%>% filter(DESCR_TIPO_VEICULO=="CAMINHÃO")%>%select(LONGITUDE, LATITUDE, DESCR_TIPO_VEICULO, QTD_VEICULOS)
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf1 <- st_as_sf(ssp_points1, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p17 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points1, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_TIPO_VEICULO)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+p17
+
+#Salva o mapa em alta resolução:
+#ggsave("roubo_Tipo_Veiculo.png", plot = p3, dpi = 320, width = 80, height = 70, units = "cm")
+
+```
+### Mapa por tipo de veículo: ONIBUS
+```{r}
+#pontos de latitude de roubos
+ssp_points1 <- df%>% filter(DESCR_TIPO_VEICULO=="ONIBUS")%>%select(LONGITUDE, LATITUDE, DESCR_TIPO_VEICULO, QTD_VEICULOS)
+
+#converte o dataframe de pontos para objeto sf
+ssp_coords_sf1 <- st_as_sf(ssp_points1, 
+                          coords = c("LONGITUDE", "LATITUDE"),  
+                          crs = 4326,   #sistema geodético WGS 84
+                          agr = "constant", na.fail = 0)
+
+p18 <- ggplot() +
+  geom_sf(data = mapa, colour = "grey", size = 0.2) +
+  geom_point(data = ssp_points1, aes(LONGITUDE, LATITUDE, colour = factor(DESCR_TIPO_VEICULO)))+
+  coord_sf(crs = 4326, datum = NA)+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme_minimal() +
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = 
+          element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+p18
+
+#Salva o mapa em alta resolução:
+#ggsave("roubo_Tipo_Veiculo.png", plot = p3, dpi = 320, width = 80, height = 70, units = "cm")
+
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+# Carrega o shapefile dos municípios do estado de SP:
+poligonos <- mapa
+
+```
+
+## Regressões:
+```{r, warning=FALSE, message=FALSE}
+# Carrega os dados:
+ap <- as.data.frame(read.delim("C:/Users/iosbi/OneDrive/Documentos/R/Trabalho de análise exploratória e estatística espacial/DataSet_Final.txt", sep = ""))
+
+#Nome das variáveis
+names(ap)
+
+#descrevendo as variáaveis
+summary(ap)
+
+#matriz de correlação
+cor(ap)
+
+# calculate global residual SST (SQT) - TX Roubo
+SST_TXROUBO <- sum((ap$TX_ROUBO - mean(ap$TX_ROUBO))^2)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+# "lm" is the function used to fit linear models:
+lm.ap0 <- lm(TX_ROUBO ~ FROTA_VEICULOS+PIB_PERCAPITA+URB_VIAS_PUB,data=ap)
+lm.ap0
+
+summary(lm.ap0)
+```
+
+```{r, warning=FALSE, message=FALSE}
+#validandoo o modelo vif - Para ser valido o modelo todos os valores dos parâmetros tem que ser menor do que 5
+vif(lm.ap0)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+#Seleção de variáveis pela stepwise
+step(lm.ap0,direction = "both")
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+
+# "lm" is the function used to fit linear models:
+lm.ap1 <- lm(TX_ROUBO ~ FROTA_VEICULOS +PIB_PERCAPITA+URB_VIAS_PUB,data=ap)
+lm.ap1
+
+summary(lm.ap1)
+
+# store the residuals (the response minus fitted values of the model)
+OLS_SSE1 <- sum(lm.ap1$residuals^2)
+
+
+# calculate R2 of the global model and store in "results.ap" variable
+r2_OLS1 <- 1 - (OLS_SSE1/SST_TXROUBO)
+
+vif(lm.ap1)
+
+```
+
+## Prepara o GWR (calcula a largura de banda)
+```{r, warning=FALSE, message=FALSE}
+# define coords (X and Y coordinates)
+coords <- cbind(ap$lon,ap$lat)
+colnames(coords) <- c("X","Y")
+
+# Calcula largura de banda (em % de registros) 
+bwGauss1 <- gwr.sel(TX_ROUBO ~ FROTA_VEICULOS + PIB_PERCAPITA + URB_VIAS_PUB,data=ap,coords=coords,adapt=TRUE,method="aic",
+                   gweight=gwr.Gauss,verbose=TRUE)
+
+```
+
+## Aplica GWR
+```{r, warning=FALSE, message=FALSE}
+gwr.ap1 <- gwr(TX_ROUBO ~ FROTA_VEICULOS + PIB_PERCAPITA,data=ap,coords=coords,bandwidth=bwGauss1,
+              gweight=gwr.Gauss,adapt=bwGauss1,hatmatrix=TRUE)
+gwr.ap1
+```
+
+## Vizualiza os resultados R2
+```{r, warning=FALSE, message=FALSE}
+GWR_SSE1 <- gwr.ap1$results$rss
+
+r2_GWR1 <- 1 - (GWR_SSE1/SST_TXROUBO)
+
+r2_GWR1
+```
+
+## SAR
+```{r, warning=FALSE, message=FALSE}
+kGauss <- round(bwGauss1 * length(ap[,1]))
+
+# create spatial weights using k nearest neighbours (knearneigh command)
+# and convert to a W matrix style (knn2nb and nb2listw commands)
+myknn <- knearneigh(coords,k=kGauss ,longlat=FALSE,RANN=FALSE) #Cada vizinho com 13 polygnos 
+mynb <- knn2nb(myknn,sym=TRUE)
+mylistw <- nb2listw(mynb,style="W")
+
+# "lagsarlm" is the function that implements SAR Lag model in R
+sar.ap <- lagsarlm(TX_ROUBO ~ FROTA_VEICULOS + PIB_PERCAPITA,data=ap,mylistw,method="Matrix")
+
+# store RSS and R2 of the SAR lag model
+SARk_SSE <- sar.ap$SSE
+r2_SARk <- 1 - (SARk_SSE/SST_TXROUBO)
+
+summary(sar.ap)
+r2_SARk
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+summary(sar.ap)
+```
+
